@@ -1,16 +1,30 @@
 const express = require('express');
 const path = require('path');
-const app = express();
+const http = require('http');
+const { Server } = require('socket.io');
 
-// Serve all static files (index.html, css, js, images, etc.) from the current folder
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
 app.use(express.static(path.join(__dirname, '/')));
 
-// Fallback: send index.html for the root route
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// ត្រូវបន្ថែម logic សម្រាប់ room-based multiplayer (join room, ផ្ញើ moves, ។ល។)
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
+
+  // TODO: បន្ថែម event handlers សម្រាប់ create/join room, moves, rematch ជាដើម
+});
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {  // ត្រូវប្រើ server.listen មិនមែន app.listen ទេ
   console.log(`Server running on port ${PORT}`);
 });
