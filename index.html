@@ -1,1600 +1,262 @@
-<!DOCTYPE html>
-<html lang="km">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>ហ្គេម X O (Clean Layout)</title>
-    <style>
-        :root {
-            --bg: #0b0f19;
-            --bg-soft: #11172a;
-            --cell: #161d33;
-            --cell-hover: #1e2740;
-            --grid-line: #232c48;
-            --text-dim: #6b7595;
-            --x-color: #ff2d6f;
-            --x-glow: rgba(255, 45, 111, 0.65);
-            --o-color: #17e5ff;
-            --o-glow: rgba(23, 229, 255, 0.65);
-            --win-color: #39ff88;
-            --win-glow: rgba(57, 255, 136, 0.75);
-            --board-max: 650px;
-            --timer-color: #17e5ff;
-            --timer-warn: #ffd93d;
-            --timer-danger: #ff2d6f;
-        }
-
-        * { box-sizing: border-box; }
-
-        body {
-            font-family: 'Khmer OS Battambang', Arial, sans-serif;
-            text-align: center;
-            background: radial-gradient(circle at 50% 0%, var(--bg-soft) 0%, var(--bg) 60%);
-            margin: 0;
-            padding: 24px 16px 40px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            color: #e6e9f5;
-        }
-
-        h1 {
-            color: #f1f3fb;
-            font-size: 1.8rem;
-            margin-bottom: 10px;
-            letter-spacing: 0.5px;
-            text-shadow: 0 0 18px rgba(120, 140, 255, 0.35);
-        }
-
-        #status {
-            font-size: 1.1rem;
-            margin-bottom: 25px;
-            color: var(--text-dim);
-        }
-
-        .x-player {
-            color: var(--x-color);
-            font-weight: bold;
-            text-shadow: 0 0 10px var(--x-glow);
-        }
-        .o-player {
-            color: var(--o-color);
-            font-weight: bold;
-            text-shadow: 0 0 10px var(--o-glow);
-        }
-
-        #game-board {
-            display: grid;
-            gap: 4px;
-            background-color: var(--bg-soft);
-            padding: 6px;
-            border-radius: 12px;
-            box-shadow: 0 0 0 1px var(--grid-line), 0 20px 60px rgba(0,0,0,0.5);
-            --grid-size: 20;
-            grid-template-columns: repeat(var(--grid-size), 1fr);
-
-            width: 95vw;
-            max-width: var(--board-max);
-            transition: transform 0.25s ease;
-            transform-origin: top center;
-            touch-action: pan-x pan-y;
-        }
-
-        #board-wrapper {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            overflow: auto;
-            -webkit-overflow-scrolling: touch;
-            padding-bottom: 4px;
-        }
-
-        #game-board.zoomed {
-            transform: scale(1.6);
-            margin: 40px 30vw 40px 0;
-        }
-
-        .cell {
-            background-color: var(--cell);
-            border: none;
-            border-radius: 5px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            cursor: pointer;
-            aspect-ratio: 1;
-            transition: all 0.2s ease;
-        }
-
-        .dim-label {
-            font-size: 0.45rem;
-            color: #3a4468;
-            position: absolute;
-            pointer-events: none;
-        }
-
-        .cell:hover:not(.taken) {
-            background-color: var(--cell-hover);
-            transform: scale(1.12);
-            z-index: 10;
-            box-shadow: 0 0 12px rgba(120, 140, 255, 0.3);
-        }
-
-        /* Ghost preview of the symbol that will be placed - desktop only (hover has no meaning on touch) */
-        @media (hover: hover) and (pointer: fine) {
-            #game-board:not(.locked) .cell:hover:not(.taken)::after {
-                content: var(--turn-symbol, "");
-                position: absolute;
-                font-size: calc(var(--board-max) / var(--grid-size) * 0.6);
-                font-weight: 900;
-                color: #ffffff;
-                opacity: 0.28;
-                pointer-events: none;
-            }
-        }
-
-        #game-board.locked .cell:hover:not(.taken) {
-            transform: none;
-            background-color: var(--cell);
-            box-shadow: none;
-            cursor: not-allowed;
-        }
-
-        .cell.taken { cursor: not-allowed; }
-        .cell.taken .dim-label { display: none; }
-
-        /* សញ្ញាសម្គាល់ការចាក់ចុងក្រោយ - ដើម្បីតាមដានវេនចុងក្រោយបានងាយ ជាពិសេសពេលក្ដារពេញសញ្ញា */
-        .cell.last-move {
-            outline: 2px solid #ffffff;
-            outline-offset: -3px;
-            box-shadow: 0 0 10px rgba(255, 255, 255, 0.55);
-            animation: lastMoveIn 0.35s ease;
-        }
-        .cell.last-move.winner { outline-color: var(--win-color); }
-        @keyframes lastMoveIn {
-            0% { outline-color: transparent; box-shadow: none; }
-            100% { outline-color: #ffffff; box-shadow: 0 0 10px rgba(255, 255, 255, 0.55); }
-        }
-
-        .cell-content {
-            font-size: calc(var(--board-max) / var(--grid-size) * 0.65);
-            font-weight: 900;
-            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-
-        .cell-content.x-player {
-            color: var(--x-color);
-            text-shadow:
-                0 0 6px var(--x-glow),
-                0 0 16px var(--x-glow),
-                0 0 32px var(--x-glow);
-        }
-        .cell-content.o-player {
-            color: var(--o-color);
-            text-shadow:
-                0 0 6px var(--o-glow),
-                0 0 16px var(--o-glow),
-                0 0 32px var(--o-glow);
-        }
-
-        .cell.winner {
-            background-color: rgba(57, 255, 136, 0.12);
-            box-shadow: 0 0 18px var(--win-glow), inset 0 0 12px var(--win-glow);
-            animation: pulseWin 1.1s ease-in-out infinite;
-        }
-        .cell.winner .cell-content {
-            color: var(--win-color) !important;
-            text-shadow:
-                0 0 8px var(--win-glow),
-                0 0 20px var(--win-glow),
-                0 0 40px var(--win-glow) !important;
-        }
-
-        @keyframes pulseWin {
-            0%, 100% { box-shadow: 0 0 14px var(--win-glow), inset 0 0 10px var(--win-glow); }
-            50% { box-shadow: 0 0 28px var(--win-glow), inset 0 0 18px var(--win-glow); }
-        }
-
-        @keyframes popIn {
-            0% { transform: scale(0); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-
-        #reset-btn {
-            margin-top: 30px;
-            padding: 12px 34px;
-            font-size: 1rem;
-            font-weight: bold;
-            background: linear-gradient(135deg, #7c3aed, #17e5ff);
-            color: #0b0f19;
-            border: none;
-            border-radius: 50px;
-            cursor: pointer;
-            box-shadow: 0 4px 25px rgba(23, 229, 255, 0.35);
-            transition: 0.3s;
-        }
-        #reset-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 30px rgba(23, 229, 255, 0.55);
-        }
-
-        #scoreboard {
-            display: flex;
-            gap: 14px;
-            align-items: center;
-            margin-bottom: 14px;
-            background: var(--bg-soft);
-            padding: 10px 20px;
-            border-radius: 14px;
-            box-shadow: 0 0 0 1px var(--grid-line);
-            font-weight: bold;
-        }
-        #scoreboard .score-item { display: flex; align-items: center; gap: 6px; }
-        #scoreboard .score-num { font-size: 1.2rem; }
-        #scoreboard .score-x { color: var(--x-color); text-shadow: 0 0 8px var(--x-glow); }
-        #scoreboard .score-o { color: var(--o-color); text-shadow: 0 0 8px var(--o-glow); }
-        #scoreboard .score-divider { color: var(--text-dim); font-weight: normal; }
-        #reset-score-btn {
-            background: none;
-            border: 1px solid var(--grid-line);
-            color: var(--text-dim);
-            font-size: 0.75rem;
-            padding: 4px 10px;
-            border-radius: 20px;
-            cursor: pointer;
-            margin-left: 6px;
-        }
-        #reset-score-btn:hover { color: #e6e9f5; border-color: var(--text-dim); }
-
-        /* ===== Turn timer ===== */
-        #turn-timer {
-            display: none;
-            align-items: center;
-            gap: 10px;
-            width: 260px;
-            max-width: 80vw;
-            margin: 0 auto 16px;
-        }
-        #turn-timer.active { display: flex; }
-        #turn-timer .timer-num {
-            font-variant-numeric: tabular-nums;
-            font-weight: 800;
-            font-size: 1rem;
-            color: var(--timer-color);
-            width: 28px;
-            text-align: right;
-        }
-        #turn-timer-track {
-            flex: 1;
-            height: 8px;
-            border-radius: 6px;
-            background: var(--bg-soft);
-            box-shadow: 0 0 0 1px var(--grid-line);
-            overflow: hidden;
-        }
-        #turn-timer-fill {
-            height: 100%;
-            width: 100%;
-            border-radius: 6px;
-            background: var(--timer-color);
-            transition: width 1s linear, background-color 0.3s ease;
-        }
-        #turn-timer.warn #turn-timer-fill { background: var(--timer-warn); }
-        #turn-timer.danger #turn-timer-fill { background: var(--timer-danger); }
-        #turn-timer.danger .timer-num { color: var(--timer-danger); }
-        #turn-timer.danger #turn-timer-track { animation: timerPulse 0.6s ease-in-out infinite; }
-        @keyframes timerPulse {
-            0%, 100% { box-shadow: 0 0 0 1px var(--grid-line); }
-            50% { box-shadow: 0 0 10px var(--timer-danger); }
-        }
-
-        /* ===== Mobile zoom toggle ===== */
-        #zoom-toggle-btn {
-            display: none;
-            position: fixed;
-            right: 16px;
-            bottom: 22px;
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            border: 1px solid var(--grid-line);
-            background: var(--bg-soft);
-            color: #e6e9f5;
-            font-size: 1.3rem;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.45);
-            z-index: 500;
-            cursor: pointer;
-        }
-        @media (max-width: 640px) {
-            #zoom-toggle-btn { display: block; }
-        }
-
-        #mode-select {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 16px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        .mode-btn {
-            background: var(--bg-soft);
-            color: var(--text-dim);
-            border: 1px solid var(--grid-line);
-            padding: 8px 18px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            font-family: inherit;
-            transition: 0.2s;
-        }
-        .mode-btn.active {
-            color: #0b0f19;
-            background: linear-gradient(135deg, #7c3aed, #17e5ff);
-            border-color: transparent;
-            box-shadow: 0 0 15px rgba(23, 229, 255, 0.4);
-        }
-
-        #online-status {
-            font-size: 0.85rem;
-            color: var(--text-dim);
-            margin-bottom: 12px;
-            min-height: 1.2em;
-        }
-        #online-status .dot {
-            display: inline-block;
-            width: 8px; height: 8px;
-            border-radius: 50%;
-            margin-right: 6px;
-            background: #ff4757;
-        }
-        #online-status.connected .dot {
-            background: var(--win-color);
-            box-shadow: 0 0 8px var(--win-glow);
-        }
-        #online-status a { color: var(--o-color); }
-
-        .player-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            margin-right: 14px;
-            vertical-align: middle;
-        }
-        .player-avatar {
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-            object-fit: cover;
-            flex-shrink: 0;
-            vertical-align: middle;
-            border: 1px solid var(--grid-line);
-        }
-        .player-avatar-fallback {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-            font-weight: 700;
-            background: var(--bg-soft);
-        }
-
-        .symbol-toast {
-            position: fixed;
-            top: 16px;
-            left: 50%;
-            transform: translate(-50%, -30px);
-            padding: 12px 22px;
-            border-radius: 14px;
-            background: var(--bg-soft);
-            border: 1px solid var(--grid-line);
-            font-weight: 700;
-            font-size: 1.05rem;
-            z-index: 999;
-            opacity: 0;
-            transition: opacity 0.25s ease, transform 0.25s ease;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-        }
-        .symbol-toast.show {
-            opacity: 1;
-            transform: translate(-50%, 0);
-        }
-
-        #online-waiting-card {
-            display: none;
-            background: var(--bg-soft);
-            border: 1px solid var(--grid-line);
-            border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 16px;
-            max-width: 420px;
-            width: 92vw;
-        }
-        #online-waiting-card.show { display: block; }
-        #online-waiting-card .waiting-title {
-            font-size: 0.95rem;
-            color: var(--text-dim);
-            margin-bottom: 12px;
-        }
-        #online-waiting-card .waiting-spinner {
-            display: inline-block;
-            width: 10px; height: 10px;
-            border-radius: 50%;
-            background: var(--o-color);
-            box-shadow: 0 0 10px var(--o-glow);
-            margin-right: 8px;
-            animation: blinkDot 1s ease-in-out infinite;
-        }
-        @keyframes blinkDot {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.25; }
-        }
-        #room-code-box {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: var(--cell);
-            border-radius: 10px;
-            padding: 10px 14px;
-            margin-bottom: 12px;
-        }
-        #room-code-text {
-            flex: 1;
-            font-family: monospace;
-            font-size: 0.95rem;
-            color: #e6e9f5;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            text-align: left;
-        }
-        .icon-btn {
-            background: none;
-            border: 1px solid var(--grid-line);
-            color: var(--text-dim);
-            border-radius: 8px;
-            padding: 6px 10px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            font-family: inherit;
-            transition: 0.2s;
-            white-space: nowrap;
-        }
-        .icon-btn:hover { color: #e6e9f5; border-color: var(--text-dim); }
-        .icon-btn.copied { color: var(--win-color); border-color: var(--win-color); }
-        #online-waiting-card .waiting-actions {
-            display: flex;
-            gap: 8px;
-        }
-        #online-waiting-card .waiting-actions .icon-btn {
-            flex: 1;
-        }
-        #share-btn {
-            background: linear-gradient(135deg, #7c3aed, #17e5ff);
-            color: #0b0f19;
-            border: none;
-            font-weight: bold;
-        }
-
-        #game-board.waiting {
-            opacity: 0.35;
-            pointer-events: none;
-        }
-
-        #confetti-canvas {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            pointer-events: none;
-            z-index: 999;
-        }
-
-        /* ===== Desktop / large screens: centered layout, bigger board ===== */
-        @media (min-width: 901px) {
-            body {
-                justify-content: center;
-                padding-top: 16px;
-                padding-bottom: 16px;
-            }
-            :root { --board-max: 720px; }
-            #game-board { gap: 5px; }
-        }
-
-        /* ===== Small phones: tighter grid so 20x20 fits without feeling cramped ===== */
-        @media (max-width: 420px) {
-            #game-board { gap: 2px; padding: 4px; }
-            .dim-label { font-size: 0.35rem; }
-        }
-    </style>
-</head>
-<body>
-
-    <h1>ហ្គេម X O ច្បាប់ ៥ ឈ្នះ</h1>
-
-    <div id="mode-select">
-        <button class="mode-btn active" id="mode-pvp" onclick="setMode('pvp')">👥 លេងក្នុងម៉ាស៊ីនតែមួយ</button>
-        <button class="mode-btn" id="mode-ai" onclick="setMode('ai')">🤖 លេងជាមួយ Bot</button>
-        <button class="mode-btn" id="mode-online" onclick="setMode('online')">🌐 លេងជាមួយមិត្ត (Online)</button>
-    </div>
-
-    <div id="online-status"></div>
-
-    <div id="online-waiting-card">
-        <div class="waiting-title"><span class="waiting-spinner"></span>កំពុងចាំមិត្តភ័ក្តិចូលរួម...</div>
-        <div id="room-code-box">
-            <span id="room-code-text"></span>
-            <button class="icon-btn" id="copy-link-btn" onclick="copyRoomLink()">📋 ចម្លង</button>
-        </div>
-        <div class="waiting-actions">
-            <button class="icon-btn" id="share-btn" onclick="shareRoomLink()">📤 អញ្ជើញមិត្តភ័ក្តិ</button>
-        </div>
-    </div>
-
-    <div id="scoreboard">
-        <div class="score-item">
-            <span class="score-x">X</span>
-            <span class="score-num score-x" id="score-x">0</span>
-        </div>
-        <span class="score-divider">|</span>
-        <div class="score-item">
-            <span class="score-o">O</span>
-            <span class="score-num score-o" id="score-o">0</span>
-        </div>
-        <button id="reset-score-btn" onclick="resetScore()">សម្អាតពិន្ទុ</button>
-    </div>
-
-    <div id="status">វេនរបស់អ្នកលេង: <span class="x-player">X</span></div>
-
-    <div id="turn-timer">
-        <div id="turn-timer-track"><div id="turn-timer-fill"></div></div>
-        <span class="timer-num" id="turn-timer-num">30</span>
-    </div>
-
-    <div id="board-wrapper">
-        <div id="game-board"></div>
-    </div>
-    <button id="reset-btn" onclick="handleResetClick()">លេងម្តងទៀត</button>
-
-    <canvas id="confetti-canvas"></canvas>
-    <button id="zoom-toggle-btn" onclick="toggleZoom()" aria-label="ពង្រីក/បង្រួម ក្ដារ">🔍</button>
-
-    <!-- Telegram Web App SDK (Mini App) - ជំនួស games.js ចាស់ (Games API) ដែលលែងប្រើហើយ -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- Socket.io client: ភ្ជាប់ទៅ server.js (server ជាអ្នកកាន់អំណាចលើ game state ទាំងអស់) -->
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const GRID_SIZE = 20;
-        const CELLS_TO_WIN = 5;
-        const boardElement = document.getElementById('game-board');
-        const statusElement = document.getElementById('status');
-
-        // ===== Telegram Mini App config =====
-        // ដាក់ Username ពិតរបស់ Bot អ្នក (គ្មាន @) - ត្រូវតែដូចគ្នានឹង BOT_TOKEN ក្នុង python-telegram-bot.py
-        // ប្រើសម្រាប់បង្កើតតំណអញ្ជើញមិត្តភ័ក្តិ (deep link) ចូល room ដូចគ្នាភ្លាមៗ
-        const BOT_USERNAME = 'YourBotUsername'; // ឧទាហរណ៍ 'khmer_xo_bot' (កុំដាក់ @)
-        // ឈ្មោះខ្លីរបស់ Mini App (កំណត់ក្នុង @BotFather -> Bot Settings -> Configure Mini App / Main Mini App)
-        // ត្រូវតែដូចគ្នានឹងអ្វីដែលអ្នកកំណត់ក្នុង BotFather ដើម្បីតំណ startapp ដំណើរការត្រឹមត្រូវ
-        const GAME_SHORT_NAME_FOR_LINK = 'play';
-        
-        let board = [];
-        let currentPlayer = 'X';
-        let gameActive = true;
-        let winnerCells = [];
-        let movesCount = 0;
-        const totalCells = GRID_SIZE * GRID_SIZE;
-
-        let gameMode = 'pvp'; // 'pvp' | 'ai' | 'online'
-        const AI_PLAYER = 'O';
-        const HUMAN_PLAYER = 'X';
-        let score = { X: 0, O: 0 };
-
-        // ===== Online Multiplayer state (Socket.io - server.js ជាអ្នកកាន់អំណាចលើ game state ទាំងអស់) =====
-        let roomId = null; // Room ID (share ជាមួយមិត្តភក្តិ)
-        let mySymbol = null; // 'X' or 'O' ដែល server បានចាត់តាំង
-        let socket = null; // Socket.io client instance (មួយឡើងសម្រាប់ session ទាំងមូល)
-        let roomState = null; // ច្បាប់ចម្លងចុងក្រោយនៃ state ដែល server ផ្ញើមក
-        let currentShareUrl = null; // តំណចែករំលែក room
-        let roomBothJoined = false; // true លុះត្រាតែអ្នកលេងទាំងពីរបានចូលរួម - ការពារការចុចមុនគូប្រកួតចូល
-        let myOnlineName = null;
-        let myOnlinePhoto = null;
-        let prevOpponentConnected = null; // ត្រួតពិនិត្យថាតើគូប្រកួតទើប disconnect/reconnect
-        let effectsPlayedThisRound = false; // ការពារកុំឲ្យសំឡេងឈ្នះ/ស្មើលេងឡើងវិញ ពេល state ជាមួយ broadcast ច្រើនដង
-        let prevRoundGameActive = true;
-
-        // ===== Turn timer =====
-        const TURN_TIME_SECONDS = 30; // ចំនួនវិនាទីក្នុងមួយវេន - អស់ពេល = ខកខានវេននោះ
-        let turnTimerInterval = null;
-        let turnStartedAt = null;
-        let localTimerKey = null;  // សម្រាប់ pvp/ai - កំណត់ថាតើវេនបានប្តូរឬអត់ មិនអោយ timer restart ដោយសារតែ re-render
-        let onlineTimerKey = null; // សម្រាប់ online - ដូចគ្នា ប៉ុន្តែផ្អែកលើ roomState.turnStartedAt
-        let lastMoveCellEl = null; // ក្រឡាដែលទើបចាក់ចុងក្រោយ - អាចប្តូរម្តងទៀត
-
-        function getUrlParam(name) {
-            return new URLSearchParams(window.location.search).get(name);
-        }
-
-        function getTelegramUserId() {
-            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
-                return String(tg.initDataUnsafe.user.id);
-            }
-            const fromUrl = getUrlParam('user_id');
-            if (fromUrl) return fromUrl;
-            // fallback សម្រាប់សាកល្បងក្រៅ Telegram (browser ធម្មតា)
-            // ប្រើ sessionStorage (មិនមែន localStorage) ដើម្បីអោយ tab នីមួយៗមានអត្តសញ្ញាណខុសគ្នា
-            // (បើប្រើ localStorage នោះ tab ២ នៅលើម៉ាស៊ីនតែមួយនឹងស្មានថាជាមនុស្សតែម្នាក់ ធ្វើឲ្យចូល room មិនកើត)
-            let anon = sessionStorage.getItem('xo_anon_id');
-            if (!anon) {
-                anon = 'anon_' + Math.random().toString(36).slice(2, 10);
-                sessionStorage.setItem('xo_anon_id', anon);
-            }
-            return anon;
-        }
-
-        function getTelegramUserName() {
-            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-                const u = tg.initDataUnsafe.user;
-                const full = [u.first_name, u.last_name].filter(Boolean).join(' ');
-                return full || u.username || 'Player';
-            }
-            const fromUrl = getUrlParam('name');
-            if (fromUrl) return decodeURIComponent(fromUrl);
-            let anonName = sessionStorage.getItem('xo_anon_name');
-            if (!anonName) {
-                anonName = 'អ្នកលេង ' + Math.floor(Math.random() * 9000 + 1000);
-                sessionStorage.setItem('xo_anon_name', anonName);
-            }
-            return anonName;
-        }
-
-        function getTelegramUserPhoto() {
-            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.photo_url) {
-                return tg.initDataUnsafe.user.photo_url;
-            }
-            return null; // គ្មានរូបភាព - នឹងប្រើអក្សរដើមឈ្មោះជំនួសវិញ
-        }
-
-        function getRoomIdFromContext() {
-            // ១. បើមិត្តភ័ក្តិចុចលើតំណអញ្ជើញ (t.me/bot/game?startapp=xo_xxx) Telegram នឹងបញ្ជូន
-            //    តម្លៃនោះមកជា start_param - នេះជាវិធីសំខាន់សម្រាប់ចូល room ជាមួយគ្នាភ្លាមៗ
-            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
-                const startParam = String(tg.initDataUnsafe.start_param);
-                if (startParam.startsWith('xo_')) return startParam;
-            }
-            // ២. សម្រាប់សាកល្បងក្រៅ Telegram ឬតំណចាស់ - ប្រើ query param ផ្ទាល់
-            const fromUrl = getUrlParam('room');
-            if (fromUrl) return fromUrl;
-            return null; // គ្មាន room ក្នុង context ទេ -> ខ្ញុំជា Host ថ្មី
-        }
-
-        // ភ្ជាប់ Telegram WebApp (បើហ្គេមកំពុងបើកនៅក្នុង Telegram)
-        const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-        if (tg) {
-            tg.ready();
-            tg.expand();
-            if (typeof tg.disableVerticalSwipes === 'function') tg.disableVerticalSwipes(); // ការពារកុំអោយអូសបិទហ្គេមចោលដោយចៃដន្យ
-            if (typeof tg.setHeaderColor === 'function') tg.setHeaderColor('#0b0f19');
-            if (typeof tg.setBackgroundColor === 'function') tg.setBackgroundColor('#0b0f19');
-        }
-
-        // ===== សំឡេង (Web Audio API - គ្មានឯកសារ audio ខាងក្រៅត្រូវការទេ) =====
-        let audioCtx = null;
-        function getAudioCtx() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            return audioCtx;
-        }
-        function playTone(freq, duration, type = 'sine', volume = 0.15, delay = 0) {
-            try {
-                const ctx = getAudioCtx();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = type;
-                osc.frequency.value = freq;
-                gain.gain.value = volume;
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                const startTime = ctx.currentTime + delay;
-                gain.gain.setValueAtTime(volume, startTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-                osc.start(startTime);
-                osc.stop(startTime + duration);
-            } catch (err) { /* audio not available, ignore */ }
-        }
-        function playClickSound() { playTone(520, 0.08, 'triangle', 0.12); }
-        function playWinSound() {
-            [660, 880, 1100, 1320].forEach((f, i) => playTone(f, 0.25, 'sine', 0.15, i * 0.1));
-        }
-        function playDrawSound() {
-            playTone(220, 0.3, 'sawtooth', 0.1);
-            playTone(180, 0.4, 'sawtooth', 0.1, 0.15);
-        }
-
-        // ===== Turn timer engine =====
-        function stopTurnTimer() {
-            if (turnTimerInterval) {
-                clearInterval(turnTimerInterval);
-                turnTimerInterval = null;
-            }
-            document.getElementById('turn-timer').classList.remove('active', 'warn', 'danger');
-        }
-
-        function startTurnTimer(startedAt) {
-            turnStartedAt = startedAt || Date.now();
-            const wrap = document.getElementById('turn-timer');
-            wrap.classList.add('active');
-            if (turnTimerInterval) clearInterval(turnTimerInterval);
-            tickTurnTimer();
-            turnTimerInterval = setInterval(tickTurnTimer, 250);
-        }
-
-        function tickTurnTimer() {
-            const elapsed = (Date.now() - turnStartedAt) / 1000;
-            const remaining = Math.max(0, TURN_TIME_SECONDS - elapsed);
-            const pct = (remaining / TURN_TIME_SECONDS) * 100;
-            document.getElementById('turn-timer-fill').style.width = pct + '%';
-            document.getElementById('turn-timer-num').textContent = Math.ceil(remaining);
-            const wrap = document.getElementById('turn-timer');
-            wrap.classList.toggle('warn', remaining <= 10 && remaining > 5);
-            wrap.classList.toggle('danger', remaining <= 5);
-            if (remaining <= 0) {
-                clearInterval(turnTimerInterval);
-                turnTimerInterval = null;
-                onTurnTimerExpire();
-            }
-        }
-
-        // សម្រេចថាតើគួរដំណើរការ timer សម្រាប់វេនបច្ចុប្បន្នដែរឬទេ ហើយកុំអោយ restart ដោយចៃដន្យ
-        function refreshTurnTimer() {
-            if (!gameActive) { stopTurnTimer(); localTimerKey = null; onlineTimerKey = null; return; }
-
-            if (gameMode === 'online') {
-                localTimerKey = null;
-                if (!roomBothJoined || !roomState) { stopTurnTimer(); onlineTimerKey = null; return; }
-                const key = (roomState.turnStartedAt || 0) + '_' + roomState.currentPlayer;
-                if (key !== onlineTimerKey) {
-                    onlineTimerKey = key;
-                    startTurnTimer(roomState.turnStartedAt || Date.now());
-                }
-                return;
-            }
-
-            onlineTimerKey = null;
-            const shouldRun = gameMode === 'pvp' || (gameMode === 'ai' && currentPlayer === HUMAN_PLAYER);
-            if (!shouldRun) { stopTurnTimer(); localTimerKey = null; return; }
-            const key = currentPlayer + '_' + movesCount;
-            if (key !== localTimerKey) {
-                localTimerKey = key;
-                startTurnTimer(Date.now());
-            }
-        }
-
-        // អស់ពេលក្នុងវេន - ខកខានវេននោះ ប្តូរទៅភាគីម្ខាងទៀតដោយស្វ័យប្រវត្តិ
-        function onTurnTimerExpire() {
-            if (!gameActive) return;
-
-            if (gameMode === 'pvp') {
-                currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
-                updateStatus();
-                refreshTurnTimer();
-            } else if (gameMode === 'ai') {
-                if (currentPlayer === HUMAN_PLAYER) {
-                    currentPlayer = AI_PLAYER;
-                    gameActive = false; // ចាក់សោអំឡុងពេល Bot គិត (ដូចគ្នានឹង handleCellClick)
-                    updateStatus();
-                    updateBoardInteractivity();
-                    setTimeout(() => {
-                        gameActive = true;
-                        aiMove();
-                    }, 400);
-                }
-            } else if (gameMode === 'online') {
-                if (roomBothJoined && mySymbol === currentPlayer && socket) {
-                    socket.emit('move:skip', {}, (ack) => {
-                        if (ack && !ack.ok) console.warn('skip rejected:', ack.error);
-                    });
-                }
-            }
-        }
-
-        // ===== Board interactivity / hover ghost symbol =====
-        function updateBoardInteractivity() {
-            const boardEl = document.getElementById('game-board');
-            let locked = !gameActive;
-            if (!locked) {
-                if (gameMode === 'ai' && currentPlayer === AI_PLAYER) locked = true;
-                else if (gameMode === 'online' && (!roomBothJoined || mySymbol !== currentPlayer)) locked = true;
-            }
-            boardEl.classList.toggle('locked', locked);
-            boardEl.style.setProperty('--turn-symbol', `"${currentPlayer}"`);
-        }
-
-        // ===== Mobile zoom toggle =====
-        function toggleZoom() {
-            const boardEl = document.getElementById('game-board');
-            const btn = document.getElementById('zoom-toggle-btn');
-            const zoomed = boardEl.classList.toggle('zoomed');
-            btn.textContent = zoomed ? '➖' : '🔍';
-            btn.setAttribute('aria-label', zoomed ? 'បង្រួមក្ដារ' : 'ពង្រីកក្ដារ');
-        }
-
-        // ===== Mode Toggle =====
-        function setMode(mode) {
-            // ចាកចេញពី room ចាស់ បើប្តូរចេញពី online
-            if (gameMode === 'online' && mode !== 'online') {
-                leaveOnlineRoom();
-            }
-
-            gameMode = mode;
-            document.getElementById('mode-pvp').classList.toggle('active', mode === 'pvp');
-            document.getElementById('mode-ai').classList.toggle('active', mode === 'ai');
-            document.getElementById('mode-online').classList.toggle('active', mode === 'online');
-
-            const statusBar = document.getElementById('online-status');
-            statusBar.className = '';
-            statusBar.textContent = '';
-            document.getElementById('online-waiting-card').classList.remove('show');
-
-            if (mode === 'online') {
-                connectOnlineRoom();
-            } else {
-                resetGame();
-            }
-        }
-
-        // ===== Online Room (Socket.io - server.js ជាអ្នកកាន់អំណាចលើ game state ទាំងអស់) =====
-        function connectOnlineRoom() {
-            const statusBar = document.getElementById('online-status');
-            const waitingCard = document.getElementById('online-waiting-card');
-
-            myOnlineName = getTelegramUserName();
-            myOnlinePhoto = getTelegramUserPhoto();
-            roomBothJoined = false;
-            mySymbol = null;
-            roomState = null;
-            effectsPlayedThisRound = false;
-            prevRoundGameActive = true;
-
-            const targetRoomId = getRoomIdFromContext();
-            roomId = targetRoomId || ('xo_' + Math.random().toString(36).slice(2, 9));
-
-            boardElement.classList.add('waiting');
-            stopTurnTimer();
-            onlineTimerKey = null;
-            buildEmptyOnlineBoard();
-            statusBar.className = '';
-            statusBar.textContent = 'កំពុងភ្ជាប់...';
-            waitingCard.classList.remove('show');
-
-            ensureSocketConnected();
-            joinRoom(statusBar, waitingCard);
-        }
-
-        function joinRoom(statusBar, waitingCard) {
-            socket.emit('room:join', {
-                roomId,
-                userId: getTelegramUserId(),
-                name: myOnlineName,
-                photo: myOnlinePhoto || null
-            }, (res) => {
-                if (!res || !res.ok) {
-                    if (res && res.error === 'room_full') {
-                        statusBar.innerHTML = '⚠️ Room នេះពេញរួច (មានអ្នកលេង ២ នាក់ស្រាប់) — <button class="icon-btn" style="margin-left:6px;" onclick="startFreshOnlineRoom()">🔄 បង្កើត Room ថ្មី</button>';
-                    } else {
-                        statusBar.innerHTML = '⚠️ មិនអាចភ្ជាប់ទៅ server បានទេ សូមព្យាយាមម្តងទៀត';
-                    }
-                    return;
-                }
-                mySymbol = res.symbol;
-                roomState = res.state;
-                roomBothJoined = !!res.state.bothJoined;
-
-                if (!roomBothJoined) {
-                    buildShareUrl(roomId);
-                    waitingCard.classList.add('show');
-                    statusBar.textContent = '';
-                } else {
-                    waitingCard.classList.remove('show');
-                    showSymbolAnnouncement(mySymbol);
-                    renderConnectedStatus();
-                }
-                syncOnlineBoard(roomState);
-            });
-        }
-
-        // ភ្ជាប់ Socket.io ១ ដងគត់ក្នុងមួយ session - ដំណើរការគ្រប់ room:join/leave បន្តបន្ទាប់
-        function ensureSocketConnected() {
-            if (socket) return;
-            socket = io();
-
-            socket.on('room:state', (state) => {
-                if (!roomState) return; // មិនទាន់ join room ណាមួយទេ - state នេះមិនពាក់ព័ន្ធ
-                const wasJoined = roomBothJoined;
-                roomState = state;
-                roomBothJoined = !!state.bothJoined;
-
-                if (wasJoined && !roomBothJoined) {
-                    // គូប្រកួតបានចាកចេញទាំងស្រុង (grace period ភ្ជាប់ត្រឡប់ផុតកំណត់)
-                    stopTurnTimer();
-                    boardElement.classList.add('waiting');
-                    const statusBar = document.getElementById('online-status');
-                    statusBar.className = '';
-                    statusBar.innerHTML = '📴 មិត្តភ័ក្តិបានចាកចេញ — <button class="icon-btn" style="margin-left:6px;" onclick="startFreshOnlineRoom()">🔄 បង្កើត Room ថ្មី</button>';
-                    return;
-                }
-
-                if (!wasJoined && roomBothJoined) {
-                    document.getElementById('online-waiting-card').classList.remove('show');
-                    showSymbolAnnouncement(mySymbol);
-                }
-
-                if (roomBothJoined) {
-                    const otherSymbol = mySymbol === 'X' ? 'O' : 'X';
-                    const opp = state.players ? state.players[otherSymbol] : null;
-                    if (opp && !opp.connected) {
-                        const statusBar = document.getElementById('online-status');
-                        statusBar.className = '';
-                        statusBar.innerHTML = '🔌 កំពុងចាំមិត្តភក្តិភ្ជាប់ត្រឡប់វិញ...';
-                    } else {
-                        renderConnectedStatus();
-                    }
-                }
-
-                syncOnlineBoard(state);
-            });
-
-            socket.on('connect_error', () => {
-                if (gameMode !== 'online' || roomBothJoined) return;
-                document.getElementById('online-status').innerHTML = '⚠️ មិនអាចភ្ជាប់ទៅ server បានទេ សូមពិនិត្យ internet';
-            });
-
-            socket.on('disconnect', () => {
-                if (gameMode !== 'online' || !roomBothJoined) return;
-                stopTurnTimer();
-                boardElement.classList.add('waiting');
-                const statusBar = document.getElementById('online-status');
-                statusBar.className = '';
-                statusBar.innerHTML = '📴 បាត់ការភ្ជាប់ទៅ server — កំពុងព្យាយាមភ្ជាប់ត្រឡប់វិញ...';
-            });
-
-            socket.on('connect', () => {
-                // ការភ្ជាប់ដំបូង៖ mySymbol នៅទទេ - joinRoom() ខាងលើជាអ្នកគ្រប់គ្រង
-                // ការភ្ជាប់ត្រឡប់ក្រោយបាត់បណ្ដាញ៖ mySymbol/roomId នៅសល់ពីមុន - ត្រូវ join room ដដែលឡើងវិញ
-                if (gameMode === 'online' && roomId && mySymbol) {
-                    joinRoom(document.getElementById('online-status'), document.getElementById('online-waiting-card'));
-                }
-            });
-        }
-
-        function buildShareUrl(id) {
-            if (tg && BOT_USERNAME && BOT_USERNAME !== 'YourBotUsername') {
-                currentShareUrl = `https://t.me/${BOT_USERNAME}/${GAME_SHORT_NAME_FOR_LINK}?startapp=${id}`;
-            } else {
-                currentShareUrl = `${location.origin}${location.pathname}?room=${id}`;
-                if (!tg) history.replaceState(null, '', `?room=${id}`);
-            }
-            document.getElementById('room-code-text').textContent = currentShareUrl;
-        }
-
-        function renderConnectedStatus() {
-            boardElement.classList.remove('waiting');
-            const statusBar = document.getElementById('online-status');
-            statusBar.className = 'connected';
-            const players = roomState.players || {};
-            const nameX = (players.X && players.X.name) || 'អ្នកលេង X';
-            const nameO = (players.O && players.O.name) || 'អ្នកលេង O';
-            const youTag = ' (អ្នក)';
-            const meTagX = mySymbol === 'X' ? youTag : '';
-            const meTagO = mySymbol === 'O' ? youTag : '';
-            const avatarX = renderAvatarHtml(players.X && players.X.photo, nameX, 'x-player');
-            const avatarO = renderAvatarHtml(players.O && players.O.photo, nameO, 'o-player');
-            statusBar.innerHTML =
-                `<span class="player-chip">${avatarX}<b class="x-player">X</b>: ${nameX}${meTagX}</span>` +
-                `<span class="player-chip">${avatarO}<b class="o-player">O</b>: ${nameO}${meTagO}</span>`;
-        }
-
-        function copyRoomLink() {
-            if (!currentShareUrl) return;
-            const btn = document.getElementById('copy-link-btn');
-            navigator.clipboard.writeText(currentShareUrl).then(() => {
-                btn.textContent = '✅ បានចម្លង!';
-                btn.classList.add('copied');
-                setTimeout(() => {
-                    btn.textContent = '📋 ចម្លង';
-                    btn.classList.remove('copied');
-                }, 2000);
-            }).catch(() => {
-                const el = document.getElementById('room-code-text');
-                const range = document.createRange();
-                range.selectNodeContents(el);
-                const sel = window.getSelection();
-                sel.removeAllRanges();
-                sel.addRange(range);
-            });
-        }
-
-        function shareRoomLink() {
-            if (!currentShareUrl) return;
-            const inviteText = 'មកលេង X O ជាមួយខ្ញុំ! 🎮';
-
-            if (tg && typeof tg.shareURL === 'function') {
-                tg.shareURL(currentShareUrl, inviteText);
-                return;
-            }
-            if (tg && typeof tg.openTelegramLink === 'function') {
-                const shareLink = `https://t.me/share/url?url=${encodeURIComponent(currentShareUrl)}&text=${encodeURIComponent(inviteText)}`;
-                tg.openTelegramLink(shareLink);
-                return;
-            }
-            if (navigator.share) {
-                navigator.share({ title: 'ហ្គេម X O', text: inviteText, url: currentShareUrl }).catch(() => {});
-            } else {
-                copyRoomLink();
-            }
-        }
-
-        function renderAvatarHtml(photoUrl, name, colorClass) {
-            if (photoUrl) {
-                return `<img class="player-avatar" src="${photoUrl}" alt="${name}">`;
-            }
-            const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
-            return `<span class="player-avatar player-avatar-fallback ${colorClass}">${initial}</span>`;
-        }
-
-        function showSymbolAnnouncement(symbol) {
-            const toast = document.createElement('div');
-            toast.className = 'symbol-toast ' + (symbol === 'X' ? 'x-player' : 'o-player');
-            toast.textContent = symbol === 'X' ? '🎲 អ្នកគឺជា X !' : '🎲 អ្នកគឺជា O !';
-            document.body.appendChild(toast);
-            if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-            requestAnimationFrame(() => toast.classList.add('show'));
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => toast.remove(), 300);
-            }, 2200);
-        }
-
-        // សាងក្តារទទេ ១ ដងគត់ (400 ក្រឡា + listeners) - មិនប៉ះពាល់ដល់ touch targets ក្រោយមក
-        function buildEmptyOnlineBoard() {
-            board = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(null));
-            boardElement.innerHTML = '';
-            boardElement.style.setProperty('--grid-size', GRID_SIZE);
-            winnerCells = [];
-            lastMoveCellEl = null;
-
-            for (let r = 0; r < GRID_SIZE; r++) {
-                for (let c = 0; c < GRID_SIZE; c++) {
-                    const cell = document.createElement('div');
-                    cell.classList.add('cell');
-                    cell.dataset.row = r;
-                    cell.dataset.col = c;
-                    const label = document.createElement('span');
-                    label.classList.add('dim-label');
-                    label.textContent = `${r},${c}`;
-                    cell.appendChild(label);
-                    cell.addEventListener('click', handleCellClick);
-                    boardElement.appendChild(cell);
-                }
-            }
-        }
-
-        // ធ្វើសមកាលកម្មតែភាពខុសគ្នា (diff) រវាង local board និង roomState.board - មិនប៉ះពាល់ក្រឡាដែលមិនប្តូរទេ
-        function syncOnlineBoard(room) {
-            const flatBoard = room.board || {};
-            const cells = boardElement.children;
-
-            const remoteKeyCount = Object.keys(flatBoard).length;
-            let localFilledCount = 0;
-            for (let r = 0; r < GRID_SIZE; r++) for (let c = 0; c < GRID_SIZE; c++) if (board[r][c]) localFilledCount++;
-
-            if (remoteKeyCount < localFilledCount) {
-                // Room ត្រូវបានចាប់ផ្តើមឡើងវិញ (rematch) -> សម្អាតតែក្រឡាដែលមានសញ្ញារួច
-                for (let r = 0; r < GRID_SIZE; r++) {
-                    for (let c = 0; c < GRID_SIZE; c++) {
-                        if (board[r][c]) {
-                            const idx = r * GRID_SIZE + c;
-                            const cellEl = cells[idx];
-                            cellEl.classList.remove('taken', 'winner', 'last-move');
-                            const content = cellEl.querySelector('.cell-content');
-                            if (content) content.remove();
-                        }
-                        board[r][c] = null;
-                    }
-                }
-                lastMoveCellEl = null;
-            }
-
-            Object.keys(flatBoard).forEach((key) => {
-                const [r, c] = key.split('_').map(Number);
-                if (board[r][c]) return;
-                const val = flatBoard[key];
-                board[r][c] = val;
-                const idx = r * GRID_SIZE + c;
-                const cellEl = cells[idx];
-                cellEl.classList.add('taken');
-                const content = document.createElement('div');
-                content.classList.add('cell-content');
-                content.classList.add(val === 'X' ? 'x-player' : 'o-player');
-                content.textContent = val;
-                cellEl.appendChild(content);
-            });
-
-            // សញ្ញាសម្គាល់ការចាក់ចុងក្រោយ - ធ្វើតាម roomState.lastMove ដើម្បីអោយអ្នកលេងទាំងពីរឃើញដូចគ្នា
-            if (room.lastMove) {
-                const idx = room.lastMove.row * GRID_SIZE + room.lastMove.col;
-                const cellEl = cells[idx];
-                if (cellEl && cellEl !== lastMoveCellEl) {
-                    if (lastMoveCellEl) lastMoveCellEl.classList.remove('last-move');
-                    cellEl.classList.add('last-move');
-                    lastMoveCellEl = cellEl;
-                }
-            }
-
-            currentPlayer = room.currentPlayer || 'X';
-            gameActive = !!room.gameActive;
-            movesCount = room.movesCount || 0;
-            score = room.score || { X: 0, O: 0 };
-            updateScoreboard();
-
-            if (room.gameActive && !prevRoundGameActive) {
-                effectsPlayedThisRound = false; // ជុំថ្មីចាប់ផ្តើម (rematch) - អនុញ្ញាតឲ្យលេងសំឡេងឈ្នះ/ស្មើម្តងទៀត
-            }
-            prevRoundGameActive = room.gameActive;
-
-            if (room.winnerCells) {
-                winnerCells = room.winnerCells;
-                highlightWinnerCells();
-            } else {
-                winnerCells = [];
-            }
-
-            if (!room.gameActive && room.winnerCells) {
-                const [wr, wc] = room.winnerCells[0];
-                const winner = flatBoard[`${wr}_${wc}`];
-                const winnerPlayer = room.players && room.players[winner];
-                const winnerName = (winnerPlayer && winnerPlayer.name) || winner;
-                statusElement.innerHTML = `🏆 អបអរសាទរ! <span class="${winner === 'X' ? 'x-player' : 'o-player'}">${winnerName}</span> (${winner}) ឈ្នះហើយ!`;
-                if (!effectsPlayedThisRound) {
-                    playWinSound();
-                    launchConfetti();
-                    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-                    showPlayAgainButton();
-                    effectsPlayedThisRound = true;
-                }
-            } else if (!room.gameActive && room.movesCount >= totalCells) {
-                statusElement.innerHTML = `🤝 ស្មើគ្នា! គ្មានអ្នកលេងណាឈ្នះទេ`;
-                if (!effectsPlayedThisRound) {
-                    playDrawSound();
-                    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
-                    showPlayAgainButton();
-                    effectsPlayedThisRound = true;
-                }
-            } else {
-                updateStatus();
-            }
-
-            refreshTurnTimer();
-            updateBoardInteractivity();
-        }
-
-        // ផ្ញើសំណើដាក់សញ្ញាទៅ server - server ជាអ្នកផ្ទៀងផ្ទាត់ (turn/cell-taken/win) និងផ្សព្វផ្សាយ state ថ្មី
-        function submitOnlineMove(row, col) {
-            if (!socket || !roomBothJoined) return;
-            socket.emit('move:make', { row, col }, (ack) => {
-                if (ack && !ack.ok) {
-                    console.warn('move rejected:', ack.error);
-                }
-            });
-        }
-
-        function startFreshOnlineRoom() {
-            leaveOnlineRoom();
-            history.replaceState(null, '', location.pathname);
-            connectOnlineRoom();
-        }
-
-        function leaveOnlineRoom() {
-            stopTurnTimer();
-            onlineTimerKey = null;
-            if (socket) {
-                try { socket.emit('room:leave'); } catch (e) {}
-            }
-            roomId = null;
-            mySymbol = null;
-            roomState = null;
-            currentShareUrl = null;
-            roomBothJoined = false;
-            boardElement.classList.remove('waiting');
-            document.getElementById('online-status').textContent = '';
-            document.getElementById('online-status').className = '';
-            document.getElementById('online-waiting-card').classList.remove('show');
-        }
-
-        // ===== Scoreboard =====
-        function updateScoreboard() {
-            document.getElementById('score-x').textContent = score.X;
-            document.getElementById('score-o').textContent = score.O;
-        }
-        function resetScore() {
-            score = { X: 0, O: 0 };
-            updateScoreboard();
-        }
-
-        function createBoard() {
-            boardElement.style.setProperty('--grid-size', GRID_SIZE);
-            boardElement.innerHTML = '';
-            board = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(null));
-            lastMoveCellEl = null;
-
-            for (let r = 0; r < GRID_SIZE; r++) {
-                for (let c = 0; c < GRID_SIZE; c++) {
-                    const cell = document.createElement('div');
-                    cell.classList.add('cell');
-                    cell.dataset.row = r;
-                    cell.dataset.col = c;
-                    
-                    // បញ្ចូលលេខវិមាត្រកូអរដោណេ (Row, Col)
-                    const label = document.createElement('span');
-                    label.classList.add('dim-label');
-                    label.textContent = `${r},${c}`;
-                    cell.appendChild(label);
-
-                    cell.addEventListener('click', handleCellClick);
-                    boardElement.appendChild(cell);
-                }
-            }
-            updateStatus();
-            refreshTurnTimer();
-        }
-
-        function handleCellClick(e) {
-            // ការពារការចុចលើអត្ថបទខាងក្នុងក្រឡា
-            const targetCell = e.target.closest('.cell');
-            if (!targetCell) return;
-
-            const row = parseInt(targetCell.dataset.row);
-            const col = parseInt(targetCell.dataset.col);
-
-            if (board[row][col] || !gameActive) return;
-
-            if (gameMode === 'online') {
-                if (!roomBothJoined) return; // កំពុងចាំគូប្រកួតទីពីរចូលរួម - មិនអនុញ្ញាតឲ្យចុចទេ
-                if (!mySymbol || currentPlayer !== mySymbol) return; // មិនមែនវេនខ្លួនឯង ឬកំពុងមើលតែ
-                playClickSound();
-                if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-                submitOnlineMove(row, col);
-                return;
-            }
-
-            if (gameMode === 'ai' && currentPlayer === AI_PLAYER) return; // រាំងស្កាត់ការចុចអំឡុងវេន Bot
-
-            placeMark(row, col, targetCell);
-
-            if (gameActive && gameMode === 'ai' && currentPlayer === AI_PLAYER) {
-                gameActive = false; // ចាក់សោការចុចអំឡុងពេល Bot គិត
-                setTimeout(() => {
-                    gameActive = true;
-                    aiMove();
-                }, 450);
-            }
-        }
-
-        function placeMark(row, col, targetCell) {
-            board[row][col] = currentPlayer;
-            targetCell.classList.add('taken');
-            movesCount++;
-
-            if (lastMoveCellEl) lastMoveCellEl.classList.remove('last-move');
-            targetCell.classList.add('last-move');
-            lastMoveCellEl = targetCell;
-            
-            // បង្កើត Element ថ្មីសម្រាប់សញ្ញា X ឬ O ដើម្បីឱ្យលោត Animation
-            const content = document.createElement('div');
-            content.classList.add('cell-content');
-            content.classList.add(currentPlayer === 'X' ? 'x-player' : 'o-player');
-            content.textContent = currentPlayer;
-            targetCell.appendChild(content);
-
-            playClickSound();
-
-            if (tg && tg.HapticFeedback) {
-                tg.HapticFeedback.impactOccurred('light');
-            }
-
-            if (checkWin(row, col)) {
-                gameActive = false;
-                score[currentPlayer]++;
-                updateScoreboard();
-                statusElement.innerHTML = `🏆 អបអរសាទរ! អ្នកលេង <span class="${currentPlayer === 'X' ? 'x-player' : 'o-player'}">${currentPlayer}</span> ឈ្នះហើយ!`;
-                highlightWinnerCells();
-                playWinSound();
-                launchConfetti();
-                if (tg && tg.HapticFeedback) {
-                    tg.HapticFeedback.notificationOccurred('success');
-                }
-                sendScoreToTelegram(currentPlayer);
-                showPlayAgainButton();
-                stopTurnTimer();
-                updateBoardInteractivity();
-                return;
-            }
-
-            if (movesCount >= totalCells) {
-                gameActive = false;
-                statusElement.innerHTML = `🤝 ស្មើគ្នា! គ្មានអ្នកលេងណាឈ្នះទេ`;
-                playDrawSound();
-                if (tg && tg.HapticFeedback) {
-                    tg.HapticFeedback.notificationOccurred('warning');
-                }
-                showPlayAgainButton();
-                stopTurnTimer();
-                updateBoardInteractivity();
-                return;
-            }
-
-            currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
-            updateStatus();
-            refreshTurnTimer();
-        }
-
-        // ផ្ញើលទ្ធផលត្រឡប់ទៅ Telegram (សម្រាប់ Game High Score API)
-        function sendScoreToTelegram(winner) {
-            if (window.TelegramGameProxy) {
-                // Telegram Game score គឺជាលេខ (score) មិនមែនអត្ថបទទេ
-                // យើងផ្ញើ 1 សម្រាប់ការឈ្នះ (អាចប្តូរតាម logic ផ្សេងបាន)
-                window.TelegramGameProxy.shareScore();
-            }
-        }
-
-        function showPlayAgainButton() {
-            if (tg && tg.MainButton) {
-                tg.MainButton.setText('លេងម្តងទៀត');
-                tg.MainButton.show();
-                tg.MainButton.onClick(() => {
-                    tg.MainButton.hide();
-                    if (gameMode === 'online') {
-                        onlineRematch();
-                    } else {
-                        resetGame();
-                    }
-                });
-            }
-        }
-
-        function onlineRematch() {
-            if (!roomBothJoined || !socket) return;
-            socket.emit('room:rematch');
-        }
-
-        // ===== AI (យុទ្ធសាស្ត្រលឿន៖ ត្រួតពិនិត្យតែក្រឡាជិតៗ, attack/block heuristic) =====
-        function aiMove() {
-            if (!gameActive) return;
-            const move = findBestAiMove();
-            if (!move) return;
-            const cells = document.querySelectorAll('.cell');
-            const targetCell = cells[move.row * GRID_SIZE + move.col];
-            placeMark(move.row, move.col, targetCell);
-        }
-
-        function getCandidateCells() {
-            // តែក្រឡាដែលនៅជិត (radius 2) នឹងក្រឡាដែលមានគេដាក់រួច ដើម្បីលឿន
-            const candidates = new Set();
-            let hasAny = false;
-            for (let r = 0; r < GRID_SIZE; r++) {
-                for (let c = 0; c < GRID_SIZE; c++) {
-                    if (board[r][c]) {
-                        hasAny = true;
-                        for (let dr = -2; dr <= 2; dr++) {
-                            for (let dc = -2; dc <= 2; dc++) {
-                                const nr = r + dr, nc = c + dc;
-                                if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE && !board[nr][nc]) {
-                                    candidates.add(nr + ',' + nc);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (!hasAny) {
-                const mid = Math.floor(GRID_SIZE / 2);
-                return [{ row: mid, col: mid }];
-            }
-            return Array.from(candidates).map(s => {
-                const [r, c] = s.split(',').map(Number);
-                return { row: r, col: c };
-            });
-        }
-
-        // ដាក់សញ្ញាសាកល្បង គណនាចំណុចប្រយោជន៍ រួចដកចេញវិញ (fast heuristic, no deep search)
-        function scoreCellFor(row, col, player) {
-            let total = 0;
-            const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
-            for (const [dr, dc] of dirs) {
-                let count = 1, openEnds = 0;
-                let r = row + dr, c = col + dc;
-                while (r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE && board[r][c] === player) {
-                    count++; r += dr; c += dc;
-                }
-                if (r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE && !board[r][c]) openEnds++;
-                r = row - dr; c = col - dc;
-                while (r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE && board[r][c] === player) {
-                    count++; r -= dr; c -= dc;
-                }
-                if (r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE && !board[r][c]) openEnds++;
-
-                if (count >= CELLS_TO_WIN) total += 100000;
-                else if (count === 4 && openEnds >= 1) total += 5000;
-                else if (count === 3 && openEnds === 2) total += 1000;
-                else if (count === 3 && openEnds === 1) total += 200;
-                else if (count === 2 && openEnds === 2) total += 50;
-                else total += count * 2;
-            }
-            return total;
-        }
-
-        function findBestAiMove() {
-            const candidates = getCandidateCells();
-            let bestScore = -Infinity;
-            let bestMoves = [];
-
-            for (const { row, col } of candidates) {
-                board[row][col] = AI_PLAYER;
-                const attackScore = scoreCellFor(row, col, AI_PLAYER);
-                board[row][col] = HUMAN_PLAYER;
-                const blockScore = scoreCellFor(row, col, HUMAN_PLAYER);
-                board[row][col] = null;
-
-                // អ្នកគ្រប់គ្រង attack លើសពី block បន្តិច ដើម្បីមិនអោយ Bot ការពារខ្លាំងពេក
-                const totalScore = attackScore * 1.1 + blockScore;
-
-                if (totalScore > bestScore) {
-                    bestScore = totalScore;
-                    bestMoves = [{ row, col }];
-                } else if (totalScore === bestScore) {
-                    bestMoves.push({ row, col });
-                }
-            }
-
-            if (bestMoves.length === 0) return null;
-            return bestMoves[Math.floor(Math.random() * bestMoves.length)];
-        }
-
-
-        function checkWin(row, col) {
-            const player = board[row][col];
-            const directions = [ [[0, 1], [0, -1]], [[1, 0], [-1, 0]], [[1, 1], [-1, -1]], [[1, -1], [-1, 1]] ];
-
-            for (let i = 0; i < directions.length; i++) {
-                let count = 1;
-                let currentWinnerCells = [[row, col]];
-                for (let j = 0; j < 2; j++) {
-                    const dr = directions[i][j][0], dc = directions[i][j][1];
-                    let r = row + dr, c = col + dc;
-                    while (r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE && board[r][c] === player) {
-                        count++;
-                        currentWinnerCells.push([r, c]);
-                        if (count >= CELLS_TO_WIN) {
-                            winnerCells = currentWinnerCells;
-                            return true;
-                        }
-                        r += dr; c += dc;
-                    }
-                }
-            }
-            return false;
-        }
-
-        function highlightWinnerCells() {
-            const cells = document.querySelectorAll('.cell');
-            winnerCells.forEach(([r, c]) => {
-                const index = r * GRID_SIZE + c;
-                cells[index].classList.add('winner');
-            });
-        }
-
-        function updateStatus() {
-            statusElement.innerHTML = `វេនរបស់អ្នកលេង: <span class="${currentPlayer === 'X' ? 'x-player' : 'o-player'}">${currentPlayer}</span>`;
-            updateBoardInteractivity();
-        }
-
-        function handleResetClick() {
-            if (gameMode === 'online') {
-                onlineRematch();
-            } else {
-                resetGame();
-            }
-        }
-
-        function resetGame() {
-            currentPlayer = 'X';
-            gameActive = true;
-            movesCount = 0;
-            winnerCells = [];
-            if (tg && tg.MainButton) {
-                tg.MainButton.hide();
-            }
-            createBoard();
-        }
-
-        // ===== Confetti (Canvas particle, ស្រាល, គ្មាន library ខាងក្រៅ) =====
-        const confettiCanvas = document.getElementById('confetti-canvas');
-        const confettiCtx = confettiCanvas.getContext('2d');
-        let confettiParticles = [];
-        let confettiAnimId = null;
-
-        function resizeConfettiCanvas() {
-            confettiCanvas.width = window.innerWidth;
-            confettiCanvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resizeConfettiCanvas);
-        resizeConfettiCanvas();
-
-        function launchConfetti() {
-            const colors = ['#ff2d6f', '#17e5ff', '#39ff88', '#ffd93d', '#a78bfa'];
-            const count = 140;
-            confettiParticles = [];
-            for (let i = 0; i < count; i++) {
-                confettiParticles.push({
-                    x: confettiCanvas.width / 2,
-                    y: confettiCanvas.height / 3,
-                    vx: (Math.random() - 0.5) * 12,
-                    vy: Math.random() * -10 - 4,
-                    size: Math.random() * 6 + 4,
-                    color: colors[Math.floor(Math.random() * colors.length)],
-                    rotation: Math.random() * 360,
-                    rotSpeed: (Math.random() - 0.5) * 12,
-                    life: 0,
-                    maxLife: 110 + Math.random() * 40
-                });
-            }
-            if (confettiAnimId) cancelAnimationFrame(confettiAnimId);
-            animateConfetti();
-        }
-
-        function animateConfetti() {
-            confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
-            let stillAlive = false;
-
-            confettiParticles.forEach(p => {
-                p.life++;
-                if (p.life > p.maxLife) return;
-                stillAlive = true;
-
-                p.vy += 0.28; // ទំនាញផែនដី
-                p.x += p.vx;
-                p.y += p.vy;
-                p.rotation += p.rotSpeed;
-
-                confettiCtx.save();
-                confettiCtx.translate(p.x, p.y);
-                confettiCtx.rotate((p.rotation * Math.PI) / 180);
-                confettiCtx.fillStyle = p.color;
-                confettiCtx.globalAlpha = Math.max(0, 1 - p.life / p.maxLife);
-                confettiCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
-                confettiCtx.restore();
-            });
-
-            if (stillAlive) {
-                confettiAnimId = requestAnimationFrame(animateConfetti);
-            } else {
-                confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
-            }
-        }
-
-        createBoard();
-
-        // ===== Auto-join room ពេលបើកតាមតំណអញ្ជើញរបស់មិត្តភ័ក្តិ =====
-        // បើមាន room id ស្រាប់ (start_param ឬ ?room=) - លោត​ចូល mode 'online' ភ្លាមៗ
-        // ដើម្បីអោយមិត្តភ័ក្តិចុចតំណតែម្តង ចូលលេងបានតែម្តង មិនចាំបាច់ចុច "លេងជាមួយមិត្ត" ខ្លួនឯង
-        (function autoJoinFromInvite() {
-            const hasStartParam = tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param
-                && String(tg.initDataUnsafe.start_param).startsWith('xo_');
-            const hasUrlRoom = !!getUrlParam('room');
-            if (hasStartParam || hasUrlRoom) {
-                setMode('online');
-            }
-        })();
-    </script>
-</body>
-</html>
+const express = require('express');
+const path = require('path');
+const http = require('http');
+const { Server } = require('socket.io');
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
+const GRID_SIZE = 20;
+const CELLS_TO_WIN = 5;
+const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
+
+app.use(express.static(path.join(__dirname, '/')));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// ===== Room storage (in-memory) =====
+// rooms[roomId] = {
+//   board: { "r_c": "X" | "O" },
+//   currentPlayer: "X" | "O",
+//   gameActive: bool,
+//   movesCount: number,
+//   score: { X: number, O: number },
+//   winnerCells: [[r,c], ...] | null,
+//   lastMove: { row, col } | null,
+//   players: {
+//     X: { socketId, userId, name, photo, connected },
+//     O: { socketId, userId, name, photo, connected }
+//   },
+//   disconnectTimers: { X: timeout|null, O: timeout|null }
+// }
+const rooms = {};
+const GRACE_PERIOD_MS = 30000; // ពេលវេលារង់ចាំសម្រាប់ភ្ជាប់ត្រឡប់វិញ មុននឹងលុប room
+
+function createRoom() {
+  return {
+    board: {},
+    currentPlayer: 'X',
+    gameActive: true,
+    movesCount: 0,
+    score: { X: 0, O: 0 },
+    winnerCells: null,
+    lastMove: null,
+    players: { X: null, O: null },
+    disconnectTimers: { X: null, O: null }
+  };
+}
+
+function publicState(room) {
+  return {
+    board: room.board,
+    currentPlayer: room.currentPlayer,
+    gameActive: room.gameActive,
+    movesCount: room.movesCount,
+    score: room.score,
+    winnerCells: room.winnerCells,
+    lastMove: room.lastMove,
+    bothJoined: !!(room.players.X && room.players.O),
+    players: {
+      X: room.players.X ? { name: room.players.X.name, photo: room.players.X.photo, connected: room.players.X.connected } : null,
+      O: room.players.O ? { name: room.players.O.name, photo: room.players.O.photo, connected: room.players.O.connected } : null
+    }
+  };
+}
+
+function broadcastState(roomId) {
+  const room = rooms[roomId];
+  if (!room) return;
+  io.to(roomId).emit('room:state', publicState(room));
+}
+
+function checkWin(room, row, col) {
+  const player = room.board[`${row}_${col}`];
+  const directions = [[[0, 1], [0, -1]], [[1, 0], [-1, 0]], [[1, 1], [-1, -1]], [[1, -1], [-1, 1]]];
+
+  for (const dirPair of directions) {
+    let count = 1;
+    let cells = [[row, col]];
+    for (const [dr, dc] of dirPair) {
+      let r = row + dr, c = col + dc;
+      while (r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE && room.board[`${r}_${c}`] === player) {
+        count++;
+        cells.push([r, c]);
+        if (count >= CELLS_TO_WIN) return cells;
+        r += dr; c += dc;
+      }
+    }
+  }
+  return null;
+}
+
+function findSymbolBySocket(room, socketId) {
+  if (room.players.X && room.players.X.socketId === socketId) return 'X';
+  if (room.players.O && room.players.O.socketId === socketId) return 'O';
+  return null;
+}
+
+function clearDisconnectTimer(room, symbol) {
+  if (room.disconnectTimers[symbol]) {
+    clearTimeout(room.disconnectTimers[symbol]);
+    room.disconnectTimers[symbol] = null;
+  }
+}
+
+io.on('connection', (socket) => {
+  socket.on('room:join', ({ roomId, userId, name, photo }, callback) => {
+    if (!roomId || typeof roomId !== 'string') {
+      return callback && callback({ ok: false, error: 'invalid_room' });
+    }
+
+    if (!rooms[roomId]) rooms[roomId] = createRoom();
+    const room = rooms[roomId];
+
+    // ភ្ជាប់ត្រឡប់វិញ - តើ userId នេះធ្លាប់ជាអ្នកលេងក្នុង room នេះរួចទេ?
+    let mySymbol = null;
+    if (room.players.X && room.players.X.userId === userId) mySymbol = 'X';
+    else if (room.players.O && room.players.O.userId === userId) mySymbol = 'O';
+
+    if (!mySymbol) {
+      // អ្នកលេងថ្មី - ចាត់ចូល slot ទំនេរ
+      if (!room.players.X) mySymbol = 'X';
+      else if (!room.players.O) mySymbol = 'O';
+      else {
+        return callback && callback({ ok: false, error: 'room_full' });
+      }
+    }
+
+    clearDisconnectTimer(room, mySymbol);
+    room.players[mySymbol] = {
+      socketId: socket.id,
+      userId: userId || socket.id,
+      name: name || (mySymbol === 'X' ? 'អ្នកលេង X' : 'អ្នកលេង O'),
+      photo: photo || null,
+      connected: true
+    };
+
+    socket.data.roomId = roomId;
+    socket.data.symbol = mySymbol;
+    socket.join(roomId);
+
+    callback && callback({ ok: true, symbol: mySymbol, state: publicState(room) });
+
+    // ប្រាប់អ្នកលេងផ្សេងទៀតក្នុង room ថាមានការផ្លាស់ប្តូរ (join/ភ្ជាប់ត្រឡប់)
+    socket.to(roomId).emit('room:state', publicState(room));
+  });
+
+  socket.on('move:make', ({ row, col }, callback) => {
+    const roomId = socket.data.roomId;
+    const symbol = socket.data.symbol;
+    const room = roomId && rooms[roomId];
+    if (!room) return callback && callback({ ok: false, error: 'no_room' });
+    if (!room.players.X || !room.players.O) return callback && callback({ ok: false, error: 'not_both_joined' });
+    if (!room.gameActive) return callback && callback({ ok: false, error: 'game_over' });
+    if (room.currentPlayer !== symbol) return callback && callback({ ok: false, error: 'not_your_turn' });
+    if (row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) {
+      return callback && callback({ ok: false, error: 'out_of_bounds' });
+    }
+    const key = `${row}_${col}`;
+    if (room.board[key]) return callback && callback({ ok: false, error: 'cell_taken' });
+
+    room.board[key] = symbol;
+    room.movesCount++;
+    room.lastMove = { row, col };
+
+    const winCells = checkWin(room, row, col);
+    if (winCells) {
+      room.gameActive = false;
+      room.winnerCells = winCells;
+      room.score[symbol] = (room.score[symbol] || 0) + 1;
+    } else if (room.movesCount >= TOTAL_CELLS) {
+      room.gameActive = false;
+      room.winnerCells = null;
+    } else {
+      room.currentPlayer = symbol === 'X' ? 'O' : 'X';
+    }
+
+    callback && callback({ ok: true });
+    broadcastState(roomId);
+  });
+
+  socket.on('move:skip', (_data, callback) => {
+    const roomId = socket.data.roomId;
+    const symbol = socket.data.symbol;
+    const room = roomId && rooms[roomId];
+    if (!room) return callback && callback({ ok: false, error: 'no_room' });
+    if (!room.gameActive) return callback && callback({ ok: false, error: 'game_over' });
+    if (room.currentPlayer !== symbol) return callback && callback({ ok: false, error: 'not_your_turn' });
+
+    room.currentPlayer = symbol === 'X' ? 'O' : 'X';
+    callback && callback({ ok: true });
+    broadcastState(roomId);
+  });
+
+  socket.on('room:rematch', () => {
+    const roomId = socket.data.roomId;
+    const room = roomId && rooms[roomId];
+    if (!room) return;
+
+    room.board = {};
+    room.currentPlayer = 'X';
+    room.gameActive = true;
+    room.movesCount = 0;
+    room.winnerCells = null;
+    room.lastMove = null;
+    // score និង players (ព័ត៌មាន join) ត្រូវរក្សាទុកដដែល
+    broadcastState(roomId);
+  });
+
+  socket.on('room:leave', () => {
+    handleLeave(socket);
+  });
+
+  socket.on('disconnect', () => {
+    handleLeave(socket, true);
+  });
+
+  function handleLeave(socket, isDisconnect = false) {
+    const roomId = socket.data.roomId;
+    const symbol = socket.data.symbol;
+    const room = roomId && rooms[roomId];
+    if (!room || !symbol) return;
+
+    if (room.players[symbol] && room.players[symbol].socketId === socket.id) {
+      room.players[symbol].connected = false;
+    }
+    socket.leave(roomId);
+
+    if (isDisconnect) {
+      // ផ្តល់ grace period ដើម្បីភ្ជាប់ត្រឡប់វិញ មុននឹងលុប player ចេញ room ជាស្ថាពរ
+      clearDisconnectTimer(room, symbol);
+      room.disconnectTimers[symbol] = setTimeout(() => {
+        if (room.players[symbol] && !room.players[symbol].connected) {
+          room.players[symbol] = null;
+        }
+        if (!room.players.X && !room.players.O) {
+          delete rooms[roomId];
+        } else {
+          broadcastState(roomId);
+        }
+      }, GRACE_PERIOD_MS);
+      broadcastState(roomId);
+    } else {
+      // ចាកចេញដោយចេតនា - លុបចេញភ្លាមៗ
+      room.players[symbol] = null;
+      socket.data.roomId = null;
+      socket.data.symbol = null;
+      if (!room.players.X && !room.players.O) {
+        delete rooms[roomId];
+      } else {
+        broadcastState(roomId);
+      }
+    }
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
